@@ -97,7 +97,9 @@ def run(estimation_model: str, tracker_type: str, classification_model: str,
   orig_arr = []
   all_emotions = []
   eye_track = []
+  sumR = sumC = sumL = sumD = sumU = 0
 
+  # gets the first 5 frames as a benchmark 
   while picframe <= 5:
       # get original image
       r, f = cap.read()
@@ -114,11 +116,6 @@ def run(estimation_model: str, tracker_type: str, classification_model: str,
       cv2.imwrite("./sitting/original.jpg", f)
       picframe = picframe + 1
 
-    
-  sumR = sumC = sumL = sumD = sumU = 0
-
-
-
   # Continuously capture images from the camera and run inference
   while cap.isOpened():
     success, imageorig = cap.read()
@@ -128,7 +125,6 @@ def run(estimation_model: str, tracker_type: str, classification_model: str,
       )
 
     counter += 1
-    image = cv2.flip(imageorig, 1)
 
     if estimation_model == 'movenet_multipose':
       # Run pose estimation using a MultiPose model.
@@ -139,7 +135,7 @@ def run(estimation_model: str, tracker_type: str, classification_model: str,
       list_persons = [pose_detector.detect(imageorig)]
 
     # Draw keypoints and edges on input image
-    image = utils.visualize(image, list_persons)
+    image = utils.visualize(imageorig, list_persons)
 
     if classifier:
       # Check if all keypoints are detected before running the classifier.
@@ -197,53 +193,39 @@ def run(estimation_model: str, tracker_type: str, classification_model: str,
       # print("left failed")
       rn_counter = rn_counter + 1
 
-
-
-
     # converting frame into Gry image.
     grayFrame = cvtColor(imageorig, COLOR_BGR2GRAY)
     height, width = grayFrame.shape
     circleCenter = (int(width/5), 50)
     # calling the face detector funciton
-    image, face = m.faceDetector(imageorig, grayFrame)
+    imageface, face = m.faceDetector(imageorig, grayFrame)
     if face is not None:
-        # calling landmarks detector funciton.
-        image, PointList = m.faceLandmakDetector(image, grayFrame, face, False)
-        # print(PointList)
+      # calling landmarks detector funciton.
+      imageface, PointList = m.faceLandmakDetector(imageface, grayFrame, face, False)
+      # print(PointList)
 
-        RightEyePoint = PointList[36:42]
-        LeftEyePoint = PointList[42:48]
-        leftRatio, topMid, bottomMid = m.blinkDetector(LeftEyePoint)
-        rightRatio, rTop, rBottom = m.blinkDetector(RightEyePoint)
-        # cv.circle(image, topMid, 2, m.YELLOW, -1)
-        # cv.circle(image, bottomMid, 2, m.YELLOW, -1)
+      RightEyePoint = PointList[36:42]
+      LeftEyePoint = PointList[42:48]
+      leftRatio, topMid, bottomMid = m.blinkDetector(LeftEyePoint)
+      rightRatio, rTop, rBottom = m.blinkDetector(RightEyePoint)
 
-        blinkRatio = (leftRatio + rightRatio)/2
-        circle(image, circleCenter, (int(blinkRatio*4.3)), m.CHOCOLATE, -1)
-        circle(image, circleCenter, (int(blinkRatio*3.2)), m.CYAN, 2)
-        circle(image, circleCenter, (int(blinkRatio*2)), m.GREEN, 3)
-
-        # for p in LeftEyePoint:
-        #     cv.circle(image, p, 3, m.MAGENTA, 1)
-        mask, pos, color, right, center, left, down, up= m.EyeTracking(image, grayFrame, RightEyePoint)
-        maskleft, leftPos, leftColor, lRight, lCenter, lLeft, lDown, lUp = m.EyeTracking(
-            image, grayFrame, LeftEyePoint)
-        sumR += right + lRight
-        sumC += center + lCenter
-        sumL += left + lLeft
-        sumD += down + lDown
-        sumU += up + lUp
-
+      mask, pos, color, right, center, left, down, up= m.EyeTracking(imageface, grayFrame, RightEyePoint)
+      maskleft, leftPos, leftColor, lRight, lCenter, lLeft, lDown, lUp = m.EyeTracking(
+          imageface, grayFrame, LeftEyePoint)
+      sumR += right + lRight
+      sumC += center + lCenter
+      sumL += left + lLeft
+      sumD += down + lDown
+      sumU += up + lUp
     eye_track = [sumR, sumC, sumL, sumD, sumU]
-    
     
     # Stop the program if the ESC key is pressed.
     if cv2.waitKey(1) == 27:
       break
-    cv2.imshow(estimation_model, image)
+    cv2.imshow(estimation_model, image[0])
 
-  result = DeepFace.analyze(image, actions=['emotion'], enforce_detection=False)
-  all_emotions.append(result[0]['emotion']['happy'])
+    result = DeepFace.analyze(image[0], actions=['emotion'], enforce_detection=False, silent=True)
+    all_emotions.append(result[0]['emotion']['happy'])
   
   cap.release()
   cv2.destroyAllWindows()
@@ -301,22 +283,52 @@ def main():
 
 
   print("--------------------------------------------")
+  print("Running Tests:")
   print()
+  depth = True
+  left = True
+  right = True
   
+  posture = False
+  facials = False
+  eye_contact = False
+  
+  print("Test 1: Posture")
   if depth > 0.5:
-    print("depth failed")
-  elif left_tilt > 0.3:
-    print("left tilt failed")
-  elif right_tilt > 0.3:
-    print("right tilt failed")
+    print("- depth leaned in/out (fail)")
+    depth = False
     
+  if left_tilt > 0.3:
+    print("- tilted left (relative to screen) (fail)")
+    left = False
+    
+  if right_tilt > 0.3:
+    print("- tilted right (relative to screen) (fail)")
+    right = False
+    
+  if depth and left and right:
+    print("- posture checked (pass)")
+    posture = True
+
+  print("Test 2: Facials")
   if aggregated_emotion < 3:
-    print("not happy enough")
-  
-  if eye_track[1] > eye_track[0] and eye_track[1] > eye_track[2] and eye_track[1] > eye_track[3] and eye_track[1] > eye_track[4]:
-    print("eyes centered")
+    print("- not happy/positive (fail)")
   else:
-    print('eyes not centered :(')
+    print("- expressing happiness (pass)")
+    facials = True
+ 
+  print("Test 3: Eye Contact")
+  if eye_track[1] > eye_track[0] and eye_track[1] > eye_track[2] and eye_track[1] > eye_track[3] and eye_track[1] > eye_track[4]:
+    print("- eyes centered (pass)")
+    eye_contact = True
+  else:
+    print("- eyes not centered (fail)")
+
+  print()
+  if posture and facials and eye_contact:
+    print("> Test overall: Pass <")
+  else:
+    print("> Test overall: Fail <")
 
 if __name__ == '__main__':
   main()
