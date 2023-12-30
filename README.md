@@ -1,1 +1,1 @@
-Devpost: https://devpost.com/software/intervu-42fwji
+https://devpost.com/software/intervu-42fwji
